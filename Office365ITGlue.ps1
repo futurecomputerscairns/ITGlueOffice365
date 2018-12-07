@@ -35,7 +35,11 @@ $certCallback = @"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-
+if (Get-Module -ListAvailable -Name MSOnline) {
+    Import-Module MSOnline
+} else {
+    Install-Module MSOnline -Force
+}
 
 $key = "$varITGKey"
 $ITGbaseURI = "https://api.itglue.com"
