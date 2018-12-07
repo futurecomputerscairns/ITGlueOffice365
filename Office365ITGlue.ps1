@@ -39,6 +39,7 @@ if (Get-Module -ListAvailable -Name MSOnline) {
     Import-Module MSOnline
 } else {
     Install-Module MSOnline -Force
+    Import-Module MSOnline
 }
 
 $key = "$varITGKey"
