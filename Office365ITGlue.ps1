@@ -1,4 +1,5 @@
-﻿
+﻿param([string] $varITGKey,
+      [string] $varPasswordID)
 
 if (-not ([System.Management.Automation.PSTypeName]'ServerCertificateValidationCallback').Type)
 {
@@ -34,8 +35,7 @@ $certCallback = @"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-param([string] $varITGKey,
-      [string] $varPasswordID)
+
 
 $key = "$varITGKey"
 $ITGbaseURI = "https://api.itglue.com"
