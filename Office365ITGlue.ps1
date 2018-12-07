@@ -34,7 +34,7 @@ $certCallback = @"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-param([string] $varITGlueKey,
+param([string] $varITGKey,
       [string] $varPasswordID)
 
 $key = "$varITGKey"
