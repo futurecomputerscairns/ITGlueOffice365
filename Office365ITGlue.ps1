@@ -38,8 +38,7 @@ $certCallback = @"
 if (Get-Module -ListAvailable -Name MSOnline) {
     Import-Module MSOnline
 } else {
-    Install-Module MSOnline -Force
-    Import-Module MSOnline
+    Import-Module "c:\temp\itglue\modules\Office365\msonline\msonline.psd1"
 }
 
 $key = "$varITGKey"
