@@ -34,6 +34,9 @@ $certCallback = @"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+param([string] $varITGlueKey,
+      [string] $varPasswordID)
+
 $key = "$varITGKey"
 $ITGbaseURI = "https://api.itglue.com"
 $assettypeID = 107594
