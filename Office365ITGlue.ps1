@@ -1,5 +1,8 @@
-﻿param([string] $varITGKey,
-      [string] $varPasswordID)
+﻿param([string] $varITGKey)
+
+#
+# Allows connection via HTTPS
+#      
 
 if (-not ([System.Management.Automation.PSTypeName]'ServerCertificateValidationCallback').Type)
 {
@@ -35,11 +38,15 @@ $certCallback = @"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-if (Get-Module -ListAvailable -Name MSOnline) {
-    Import-Module MSOnline
-} else {
-    Import-Module "c:\temp\itglue\modules\Office365\msonline\msonline.psd1"
-}
+#
+# Import MSOnline Module
+#
+
+Import-Module "c:\temp\itglue\modules\Office365\msonline\MSONLINE.psm1"
+
+#
+# Variables
+#
 
 $key = "$varITGKey"
 $ITGbaseURI = "https://api.itglue.com"
@@ -48,7 +55,11 @@ $assettypeID = 107594
 $headers = @{
     "x-api-key" = $key
 }
- 
+
+#
+# Functinos
+#
+
 Function Get-StringHash([String] $String, $HashName = "MD5") { 
     $StringBuilder = New-Object System.Text.StringBuilder 
     [System.Security.Cryptography.HashAlgorithm]::Create($HashName).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($String))| % { 
@@ -73,37 +84,6 @@ function Get-ITGlueItem($Resource) {
     }
     return $array
 }
- 
-$passwords = Get-ITGlueItem -Resource passwords/$varPasswordID 
-
-$ITGluepasswords = @()
-
-foreach($password in $passwords){
-    $details = Get-ITGlueItem -Resource passwords/$($password.id) 
-    if(($details.attributes.'password-category-name' -eq 'Office 365') -and ($password.id -eq "$varPasswordID")){
-
-    $customers = [ordered]@{
-        Customer        = $details.attributes.'organization-name'
-        Category = $details.attributes.'password-category-name'
-        Username = $details.attributes.username
-        Password = $details.attributes.password
-        PasswordID = $password.id      
-    }
-    $object = New-Object psobject -Property $customers
-    $ITGluepasswords += $object
-
-    }
-}    
-
-$o365user = $ITGluepasswords.username 
-$o365pass = $ITGluepasswords.password 
-$pass= convertto-securestring -string $o365pass -asplaintext -force
-$mycred = new-object -typename System.Management.Automation.PSCredential -argumentlist $o365user,$pass
-$O365Cred = Get-Credential $mycred
-Connect-MsolService -Credential $O365Cred
-
-
-
 
 function GetAllITGItems($Resource) {
     $array = @()
@@ -138,7 +118,7 @@ function Build365TenantAsset ($tenantInfo) {
         data = @{
             type       = "flexible-assets"
             attributes = @{
-                "organization-id"        = $tenantInfo.OrganizationID
+                "organization-id"        = $tenantInfo.ITGlueOrgID
                 "flexible-asset-type-id" = $assettypeID
                 traits                   = @{
                     "tenant-name"      = $tenantInfo.TenantName
@@ -155,10 +135,73 @@ function Build365TenantAsset ($tenantInfo) {
     $tenantAsset = $body | ConvertTo-Json -Depth 10
     return $tenantAsset
 }
+
+function AttemptMatch($attemptedorganisation) {
+    $attempted_match = Get-ITGlueOrganizations -filter_name $attemptedorganisation
+    if($attempted_match.data[0].attributes.name -eq $attemptedorganisation) {
+                Write-Host "Auto-match of ITGlue company successful." -ForegroundColor Green
     
+                $ITGlueOrganisation = $attempted_match.data.id
+    }
+                else {
+                Write-Host "No auto-match was found. Please pass the exact name in ITGlue to -organization <string>" -ForegroundColor Red
+                Exit
+                }
+            return $ITGlueOrganisation
     
-    
-$customer = Get-MsolCompanyInformation
+               
+          }
+
+#
+# Gather all Office 365 passwords from ITGlue 
+#
+
+Write-Host "Gathering all Office 365 Passwords from ITGlue" -ForegroundColor Green
+
+$passwords = Get-ITGlueItem -Resource passwords 
+$passwords = $passwords | Where {$_.attributes.'password-category-name' -eq 'Microsoft Office 365 Admin'}
+
+$ITGluepasswords = @()
+
+foreach($password in $passwords){
+    $details = Get-ITGlueItem -Resource passwords/$($password.id) 
+   
+        $customer = $details.attributes.'organization-name'
+        $customerID = $details.attributes.'organization-id'
+        $category = $details.attributes.'password-category-name'
+        $itgUsername = $details.attributes.username
+        $itgpassword = $details.attributes.password
+        $passwordID = $details.id
+
+        $Object = New-Object PSObject 
+        $object | Add-Member -MemberType NoteProperty -Name Customer -Value $customer
+        $object | Add-Member -MemberType NoteProperty -Name CustomerID -Value $customerID
+        $object | Add-Member -MemberType NoteProperty -Name Category -Value $category
+        $object | Add-Member -MemberType NoteProperty -Name itgUsername -Value $itgUsername
+        $object | Add-Member -MemberType NoteProperty -Name itgPassword -Value $itgpassword
+        $object | Add-Member -MemberType NoteProperty -Name PasswordID -Value $passwordID
+        $ITGluepasswords += $object
+
+    }
+
+
+Write-Host "Passwords gathered and sorted, now starting all customers loop.." -ForegroundColor Green
+
+foreach ($itgluepassword in $ITGluepasswords){
+
+$o365user = $ITGluepassword.itgUsername 
+$o365pass = $ITGluepassword.itgPassword 
+$pass= convertto-securestring -string $o365pass -asplaintext -force
+$mycred = new-object -typename System.Management.Automation.PSCredential -argumentlist $o365user,$pass
+$O365Cred = Get-Credential $mycred
+Connect-MsolService -Credential $O365Cred
+
+$ITGlueOrganisation = AttemptMatch -attemptedorganisation $ITGluepassword.Customer
+
+try 
+
+{$customer = Get-MsolCompanyInformation
+
     
 $365domains = @()
     
@@ -207,6 +250,8 @@ $365domains = @()
         
         
     $hash = [ordered]@{
+        ITGlueOrgID       = $ITGlueOrganisation
+        ITGlueOrgName     = $itgluepassword.Customer
         TenantName        = $customer.displayname
         Domains           = $customerDomains.name
         TenantId          = $customer.TenantId
@@ -216,64 +261,31 @@ $365domains = @()
     }
     $object = New-Object psobject -Property $hash
     $365domains += $object
-        
-
+}        
+catch {
+Write-Host "Failed to connect to Office 365 for $($ITGluepassword.Customer), see error below:"
+Write-Error $_}
     
-# Get all organisations
-#$orgs = GetAllITGItems -Resource organizations
-    
-# Get all Contacts
-$itgcontacts = GetAllITGItems -Resource contacts
-    
-$itgEmailRecords = @()
-foreach ($contact in $itgcontacts) {
-    foreach ($email in $contact.attributes."contact-emails") {
-        $hash = @{
-            Domain         = ($email.value -split "@")[1]
-            OrganizationID = $contact.attributes.'organization-id'
-        }
-        $object = New-Object psobject -Property $hash
-        $itgEmailRecords += $object
-    }
-}
-    
-$allMatches = @()
-foreach ($365tenant in $365domains) {
-    foreach ($domain in $365tenant.Domains) {
-        $itgContactMatches = $itgEmailRecords | Where-Object {$_.domain -contains $domain}
-        foreach ($match in $itgContactMatches) {
-            $hash = [ordered]@{
-                Key            = "$($365tenant.TenantId)-$($match.OrganizationID)"
-                TenantName     = $365tenant.TenantName
-                Domains        = ($365tenant.domains -join ", ")
-                TenantId       = $365tenant.TenantId
-                InitialDomain  = $365tenant.InitialDomain
-                OrganizationID = $match.OrganizationID
-                Licenses       = $365tenant.Licenses
-                LicensedUsers  = $365tenant.LicensedUsers
-            }
-            $object = New-Object psobject -Property $hash
-            $allMatches += $object
-        }
-    }
-}
-    
-$uniqueMatches = $allMatches | Sort-Object key -Unique
-    
-foreach ($match in $uniqueMatches) {
+foreach ($obj in $365domains){
+    if ($obj -ne $null){
     $existingAssets = @()
-    $existingAssets += GetAllITGItems -Resource "flexible_assets?filter[organization_id]=$($match.OrganizationID)&filter[flexible_asset_type_id]=$assetTypeID"
-    $matchingAsset = $existingAssets | Where-Object {$_.attributes.traits.'tenant-id' -contains $match.TenantId}
+    $existingAssets += GetAllITGItems -Resource "flexible_assets?filter[organization_id]=$ITGlueOrganisation&filter[flexible_asset_type_id]=$assetTypeID"
+    $matchingAsset = $existingAssets | Where-Object {$_.attributes.traits.'tenant-name' -contains $obj.TenantName}
         
     if ($matchingAsset) {
-        Write-Host "Updating Office 365 tenant for $($match.tenantName)"
-        $UpdatedBody = Build365TenantAsset -tenantInfo $match
+        Write-Host "Updating Office 365 tenant for $($obj.ITGlueOrgName)"
+        $UpdatedBody = Build365TenantAsset -tenantInfo $obj
         $updatedItem = UpdateITGItem -resource flexible_assets -existingItem $matchingAsset -newBody $UpdatedBody
     }
     else {
-        Write-Host "Creating Office 365 tenant for $($match.tenantName)"
-        $newBody = Build365TenantAsset -tenantInfo $match
+        Write-Host "Creating Office 365 tenant for $($obj.ITGlueOrgName)"
+        $newBody = Build365TenantAsset -tenantInfo $obj
         $newItem = CreateITGItem -resource flexible_assets -body $newBody
     }
 }
+
+}
+
+}
+
 
