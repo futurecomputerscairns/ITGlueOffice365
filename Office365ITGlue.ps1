@@ -42,7 +42,7 @@ $certCallback = @"
 # Import MSOnline Module
 #
 
-Import-Module "c:\temp\itglue\modules\Office365\msonline\MSONLINE.psm1"
+Import-Module "c:\temp\itglue\modules\Office365\msonline\MSOnline.psd1"
 
 #
 # Variables
