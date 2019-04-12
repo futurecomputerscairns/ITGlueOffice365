@@ -8,8 +8,6 @@ The 'password type' for the global admin credentials must be set to 'Microsoft O
 
 Powershell 3.0 or greater is required for this script to run.
 
-[Powershell API Wrapper](https://github.com/itglue/powershellwrapper)
-
 **Due to requirements I have in my environments, I needed to manually download the module and place into C:\Temp\ITGlue\Modules**
 
 Edit line #45 to 'Import-Module MSOnline' if you don't face this issue.
